@@ -32,6 +32,8 @@ from torch.utils.data.distributed import DistributedSampler
 import tokenization
 from modeling import BertConfig, BertModel
 
+import pickle
+
 logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s', 
                     datefmt = '%m/%d/%Y %H:%M:%S',
                     level = logging.INFO)
@@ -207,7 +209,7 @@ def main():
     parser.add_argument("--layers", default="-1,-2,-3,-4", type=str)
     parser.add_argument("--max_seq_length", default=128, type=int,
                         help="The maximum total input sequence length after WordPiece tokenization. Sequences longer "
-                            "than this will be truncated, and sequences shorter than this will be padded.")
+                             "than this will be truncated, and sequences shorter than this will be padded.")
     parser.add_argument("--do_lower_case", default=True, action='store_true', 
                         help="Whether to lower case the input text. Should be True for uncased "
                             "models and False for cased models.")
@@ -215,8 +217,16 @@ def main():
     parser.add_argument("--local_rank",
                         type=int,
                         default=-1,
-                        help = "local_rank for distributed training on gpus")
-
+                        help="local_rank for distributed training on gpus")
+    parser.add_argument("--generate_sentence_embedding",
+                        type=bool,
+                        default=False,
+                        help="If true, returns the embedding corresponding to final hidden layer"
+                             "of first token as described in Figure 3a and 3b")
+    parser.add_argument("--pickle_output_file",
+                        type=str,
+                        default="embeddings.pkl",
+                        help="The file to save sentence embeddings to if generating them")
     args = parser.parse_args()
 
     if args.local_rank == -1 or args.no_cuda:
@@ -267,6 +277,9 @@ def main():
         eval_sampler = DistributedSampler(eval_data)
     eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=args.batch_size)
 
+    # A list of embeddings to be saved as a pickle_file
+    embeddings_list = []
+
     model.eval()
     with open(args.output_file, "w", encoding='utf-8') as writer:
         for input_ids, input_mask, example_indices in eval_dataloader:
@@ -283,23 +296,40 @@ def main():
                 output_json = collections.OrderedDict()
                 output_json["linex_index"] = unique_id
                 all_out_features = []
-                for (i, token) in enumerate(feature.tokens):
-                    all_layers = []
-                    for (j, layer_index) in enumerate(layer_indexes):
-                        layer_output = all_encoder_layers[int(layer_index)].detach().cpu().numpy()
-                        layer_output = layer_output[b]
-                        layers = collections.OrderedDict()
-                        layers["index"] = layer_index
-                        layers["values"] = [
-                            round(x.item(), 6) for x in layer_output[i]
-                        ]
-                        all_layers.append(layers)
-                    out_features = collections.OrderedDict()
-                    out_features["token"] = token
-                    out_features["layers"] = all_layers
-                    all_out_features.append(out_features)
-                output_json["features"] = all_out_features
-                writer.write(json.dumps(output_json) + "\n")
+
+                if args.generate_sentence_embedding:
+                    layer_output = all_encoder_layers[-1].detach().cpu().numpy()
+                    layer_output = layer_output[b]
+
+                    # Use 0 index of layer_output because it corresponds to CLS opening token
+                    embedding = [round(x.item(), 6) for x in layer_output[0]]
+                    embeddings_list.append(embedding)
+
+                    output_json['embedding'] = embedding
+                    output_json['sentence'] = " ".join(feature.tokens[1:-1])
+                    writer.write(json.dumps(output_json) + "\n")
+                else:
+                    for (i, token) in enumerate(feature.tokens):
+                        all_layers = []
+                        for (j, layer_index) in enumerate(layer_indexes):
+                            layer_output = all_encoder_layers[int(layer_index)].detach().cpu().numpy()
+                            layer_output = layer_output[b]
+                            layers = collections.OrderedDict()
+                            layers["index"] = layer_index
+                            layers["values"] = [
+                                round(x.item(), 6) for x in layer_output[i]
+                            ]
+                            all_layers.append(layers)
+                        out_features = collections.OrderedDict()
+                        out_features["token"] = token
+                        out_features["layers"] = all_layers
+                        all_out_features.append(out_features)
+                    output_json["features"] = all_out_features
+                    writer.write(json.dumps(output_json) + "\n")
+
+    if embeddings_list:
+        with open(args.pickle_output_file, "wb") as f:
+            pickle.dump(embeddings_list, f)
 
 
 if __name__ == "__main__":
