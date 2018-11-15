@@ -1,3 +1,46 @@
+# Hackathon Specific Instructions
+
+## Step 1: Download Pre-trained BERT Models
+Download the uncased-base model [here](https://storage.googleapis.com/bert_models/2018_10_18/uncased_L-12_H-768_A-12.zip) and save it to a folder within this directory.
+
+## Step 2: Convert the models to PyTorch
+Replace /path/to/bert/ with the appropiate path to folder. The pytorch model will be saved in the repo root directory as **pytorch_model.bin**.
+```shell
+export BERT_BASE_DIR=/path/to/bert/uncased_L-12_H-768_A-12
+
+python convert_tf_checkpoint_to_pytorch.py \
+  --tf_checkpoint_path $BERT_BASE_DIR/bert_model.ckpt \
+  --bert_config_file $BERT_BASE_DIR/bert_config.json \
+  --pytorch_dump_path ./pytorch_model.bin
+```
+
+## Step 3: Set path-to-repo environment variable
+```shell
+export BERT_PYTORCH_DIR=/path/to/repo/
+```
+
+## Step 4: Create a file containing input queries
+Call this file **input.txt** and put it in the repo root. Make sure queries are separated by new lines.
+
+## Step 5: Generate embeddings
+Running this command will produce two outputs: **output.txt** and **embeddings.pkl**. The file **output.txt** consists of newline separated dictionaries each
+of which contains keys "linex_index" (unique id), "embedding", and "sentence". The file **embeddings.pkl** contains a list of embeddings corresponding to the 
+order of queries in **input.txt**.
+
+Note that getting the "generate_sentence_embedding" flag to be False returns the hidden state for each layer for each token. The **embeddings.pkl** 
+file is not generated in this case.
+```shell
+python extract_features.py \
+  --input_file $BERT_PYTORCH_DIR/input.txt \
+  --vocab_file $BERT_BASE_DIR/vocab.txt \
+  --output_file $BERT_PYTORCH_DIR/output.txt \
+  --bert_config_file $BERT_BASE_DIR/bert_config.json \
+  --init_checkpoint $BERT_PYTORCH_DIR/pytorch_model.bin \
+  --generate_sentence_embedding True \
+```
+
+Below is the README corresponding to the [original repo](https://github.com/huggingface/pytorch-pretrained-BERT).
+
 # PyTorch implementation of Google AI's BERT model with a script to load Google's pre-trained models
 
 ## Introduction
