@@ -33,6 +33,8 @@ import tokenization
 from modeling import BertConfig, BertModel
 
 import pickle
+import os
+
 
 logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s', 
                     datefmt = '%m/%d/%Y %H:%M:%S',
@@ -191,7 +193,23 @@ def read_examples(input_file):
     return examples
 
 
-def main():
+def get_embedding(query):
+    try:
+        BERT_BASE_DIR = os.environ['BERT_BASE_DIR']
+        BERT_PYTORCH_DIR = os.environ['BERT_PYTORCH_DIR']
+    except:
+        print("Make sure to set BERT_BASE_DIR and BERT_PYTORCH_DIR environment variables")
+
+    return main(["--input_file", f"{BERT_PYTORCH_DIR}/input.txt",
+                 "--vocab_file", f"{BERT_BASE_DIR}/vocab.txt",
+                 "--output_file", f"{BERT_PYTORCH_DIR}/output.txt",
+                 "--bert_config_file", f"{BERT_BASE_DIR}/bert_config.json",
+                 "--init_checkpoint", f"{BERT_PYTORCH_DIR}/pytorch_model.bin",
+                 "--generate_sentence_embedding", "True",
+                 "--query", query])
+
+
+def main(raw_args=None):
     parser = argparse.ArgumentParser()
 
     ## Required parameters
@@ -227,7 +245,12 @@ def main():
                         type=str,
                         default="embeddings.pkl",
                         help="The file to save sentence embeddings to if generating them")
-    args = parser.parse_args()
+    parser.add_argument("--query",
+                        type=str,
+                        default="",
+                        help="Providing a single query")
+
+    args = parser.parse_args(raw_args)
 
     if args.local_rank == -1 or args.no_cuda:
         device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
@@ -246,7 +269,11 @@ def main():
     tokenizer = tokenization.FullTokenizer(
         vocab_file=args.vocab_file, do_lower_case=args.do_lower_case)
 
-    examples = read_examples(args.input_file)
+    # If we provide a query in cli then use that
+    if args.query:
+        examples = [InputExample(unique_id=0, text_a=args.query, text_b=None)]
+    else:
+        examples = read_examples(args.input_file)
 
     features = convert_examples_to_features(
         examples=examples, seq_length=args.max_seq_length, tokenizer=tokenizer)
@@ -303,6 +330,11 @@ def main():
 
                     # Use 0 index of layer_output because it corresponds to CLS opening token
                     embedding = [round(x.item(), 6) for x in layer_output[0]]
+
+                    # If we provide a query, just return the embedding immediately
+                    if args.query:
+                        return embedding
+
                     embeddings_list.append(embedding)
 
                     output_json['embedding'] = embedding

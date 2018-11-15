@@ -19,13 +19,15 @@ python convert_tf_checkpoint_to_pytorch.py \
 export BERT_PYTORCH_DIR=/path/to/repo/
 ```
 
-## Step 4: Create a file containing input queries
+## Step 4: Create a file containing input queries (Optional)
 Call this file **input.txt** and put it in the repo root. Make sure queries are separated by new lines.
 
 ## Step 5: Generate embeddings
-Running this command will produce two outputs: **output.txt** and **embeddings.pkl**. The file **output.txt** consists of newline separated dictionaries each
-of which contains keys "linex_index" (unique id), "embedding", and "sentence". The file **embeddings.pkl** contains a list of embeddings corresponding to the 
-order of queries in **input.txt**.
+
+### Option 1
+To use this option you must complete Step 4 by creating a file with queries (input.txt). Running this command will produce two outputs: **output.txt** and **embeddings.pkl**. 
+The file **output.txt** consists of newline separated dictionaries each of which contains keys "linex_index" (unique id), "embedding", and "sentence". 
+The file **embeddings.pkl** contains a list of embeddings corresponding to the order of queries in **input.txt**.
 
 Note that getting the "generate_sentence_embedding" flag to be False returns the hidden state for each layer for each token. The **embeddings.pkl** 
 file is not generated in this case.
@@ -36,7 +38,21 @@ python extract_features.py \
   --output_file $BERT_PYTORCH_DIR/output.txt \
   --bert_config_file $BERT_BASE_DIR/bert_config.json \
   --init_checkpoint $BERT_PYTORCH_DIR/pytorch_model.bin \
+  --generate_sentence_embedding True
+```
+
+### Option 2
+It is also possible to immediately return the embedding for a single query. This can be done using the **get_embedding(query)** function or in the CLI by providing 
+a query flag with the query in quotes.
+```shell
+python extract_features.py \
+  --input_file $BERT_PYTORCH_DIR/input.txt \
+  --vocab_file $BERT_BASE_DIR/vocab.txt \
+  --output_file $BERT_PYTORCH_DIR/output.txt \
+  --bert_config_file $BERT_BASE_DIR/bert_config.json \
+  --init_checkpoint $BERT_PYTORCH_DIR/pytorch_model.bin \
   --generate_sentence_embedding True \
+  --query "example query with spaces and quotes around"
 ```
 
 Below is the README corresponding to the [original repo](https://github.com/huggingface/pytorch-pretrained-BERT).
